@@ -1,0 +1,1758 @@
+local AimPart = "UpperTorso"  
+local AimlockKey = "x"
+local AimRadius = 15
+local ThirdPerson = true 
+local FirstPerson = true
+local TeamCheck = false
+local PredictMovement = false
+local PredictionVelocity = 0
+local Smoothness = false
+local SmoothnessAmount = 0.015
+local Notify = false
+
+local Players, Uis, RService, SGui = game:GetService"Players", game:GetService"UserInputService", game:GetService"RunService", game:GetService"StarterGui";
+local Client, Mouse, Camera, CF, RNew, Vec3, Vec2 = Players.LocalPlayer, Players.LocalPlayer:GetMouse(), workspace.CurrentCamera, CFrame.new, Ray.new, Vector3.new, Vector2.new;
+local Aimlock, MousePressed, CanNotify = false, false, false;
+local AimlockTarget;
+local OldPre;
+
+local WorldToViewportPoint = function(P)
+	return Camera:WorldToViewportPoint(P)
+end
+
+local WorldToScreenPoint = function(P)
+	return Camera.WorldToScreenPoint(Camera, P)
+end
+
+local GetObscuringObjects = function(T)
+	if T and T:FindFirstChild(AimPart) and Client and Client.Character:FindFirstChild("Head") then 
+		local RayPos = workspace:FindPartOnRay(RNew(
+			T[AimPart].Position, Client.Character.Head.Position)
+		)
+		if RayPos then return RayPos:IsDescendantOf(T) end
+	end
+end
+
+local GetNearestTarget = function()
+	local players = {}
+	local PLAYER_HOLD  = {}
+	local DISTANCES = {}
+	for i, v in pairs(Players:GetPlayers()) do
+		if v ~= Client then
+			table.insert(players, v)
+		end
+	end
+	for i, v in pairs(players) do
+		if v.Character ~= nil then
+			local AIM = v.Character:FindFirstChild("Head")
+			if TeamCheck == true and v.Team ~= Client.Team then
+				local DISTANCE = (v.Character:FindFirstChild("Head").Position - game.Workspace.CurrentCamera.CFrame.p).magnitude
+				local RAY = Ray.new(game.Workspace.CurrentCamera.CFrame.p, (Mouse.Hit.p - game.Workspace.CurrentCamera.CFrame.p).unit * DISTANCE)
+				local HIT,POS = game.Workspace:FindPartOnRay(RAY, game.Workspace)
+				local DIFF = math.floor((POS - AIM.Position).magnitude)
+				PLAYER_HOLD[v.Name .. i] = {}
+				PLAYER_HOLD[v.Name .. i].dist= DISTANCE
+				PLAYER_HOLD[v.Name .. i].plr = v
+				PLAYER_HOLD[v.Name .. i].diff = DIFF
+				table.insert(DISTANCES, DIFF)
+			elseif TeamCheck == false and v.Team == Client.Team then 
+				local DISTANCE = (v.Character:FindFirstChild("Head").Position - game.Workspace.CurrentCamera.CFrame.p).magnitude
+				local RAY = Ray.new(game.Workspace.CurrentCamera.CFrame.p, (Mouse.Hit.p - game.Workspace.CurrentCamera.CFrame.p).unit * DISTANCE)
+				local HIT,POS = game.Workspace:FindPartOnRay(RAY, game.Workspace)
+				local DIFF = math.floor((POS - AIM.Position).magnitude)
+				PLAYER_HOLD[v.Name .. i] = {}
+				PLAYER_HOLD[v.Name .. i].dist= DISTANCE
+				PLAYER_HOLD[v.Name .. i].plr = v
+				PLAYER_HOLD[v.Name .. i].diff = DIFF
+				table.insert(DISTANCES, DIFF)
+			end
+		end
+	end
+
+	if unpack(DISTANCES) == nil then
+		return nil
+	end
+
+	local L_DISTANCE = math.floor(math.min(unpack(DISTANCES)))
+	if L_DISTANCE > AimRadius then
+		return nil
+	end
+
+	for i, v in pairs(PLAYER_HOLD) do
+		if v.diff == L_DISTANCE then
+			return v.plr
+		end
+	end
+	return nil
+end
+
+Mouse.KeyDown:Connect(function(a)
+	if not (Uis:GetFocusedTextBox()) then 
+		if a == AimlockKey and AimlockTarget == nil then
+			pcall(function()
+				if MousePressed ~= true then
+					MousePressed = true
+				end 
+				local Target;Target = GetNearestTarget()
+				if Target ~= nil then 
+					AimlockTarget = Target
+				end
+				if Notify == true then
+					game.StarterGui:SetCore("SendNotification", {
+						Title = 'Renaz';
+						Text = AimlockTarget;
+						Duration = 1.5;
+					})
+				end
+			end)
+		elseif a == AimlockKey and AimlockTarget ~= nil then
+			if AimlockTarget ~= nil then
+				AimlockTarget = nil
+			end
+			if MousePressed ~= false then 
+				MousePressed = false 
+			end
+		end
+	end
+end)
+
+RService.RenderStepped:Connect(function()
+	if ThirdPerson == true and FirstPerson == true then 
+		if (Camera.Focus.p - Camera.CoordinateFrame.p).Magnitude > 1 or (Camera.Focus.p - Camera.CoordinateFrame.p).Magnitude <= 1 then 
+			CanNotify = true 
+		else 
+			CanNotify = false 
+		end
+	elseif ThirdPerson == true and FirstPerson == false then 
+		if (Camera.Focus.p - Camera.CoordinateFrame.p).Magnitude > 1 then 
+			CanNotify = true 
+		else 
+			CanNotify = false 
+		end
+	elseif ThirdPerson == false and FirstPerson == true then 
+		if (Camera.Focus.p - Camera.CoordinateFrame.p).Magnitude <= 1 then 
+			CanNotify = true 
+		else 
+			CanNotify = false 
+		end
+	end
+	if Aimlock == true and MousePressed == true then 
+		if AimlockTarget and AimlockTarget.Character and AimlockTarget.Character:FindFirstChild(AimPart) then 
+			if FirstPerson == true then
+				if CanNotify == true then
+					if PredictMovement == true then
+						if Smoothness == true then
+							local Main = CF(Camera.CFrame.p, AimlockTarget.Character[AimPart].Position + AimlockTarget.Character[AimPart].Velocity * PredictionVelocity)
+							Camera.CFrame = Camera.CFrame:Lerp(Main, SmoothnessAmount, Enum.EasingStyle.Bounce, Enum.EasingDirection.InOut)
+						else
+							Camera.CFrame = CF(Camera.CFrame.p, AimlockTarget.Character[AimPart].Position + AimlockTarget.Character[AimPart].Velocity * PredictionVelocity)
+						end
+					elseif PredictMovement == false then 
+						if Smoothness == true then
+							local Main = CF(Camera.CFrame.p, AimlockTarget.Character[AimPart].Position)
+							Camera.CFrame = Camera.CFrame:Lerp(Main, SmoothnessAmount, Enum.EasingStyle.Bounce, Enum.EasingDirection.InOut)
+						else
+							Camera.CFrame = CF(Camera.CFrame.p, AimlockTarget.Character[AimPart].Position)
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+local Background = Instance.new("Frame")
+local UICorner = Instance.new("UICorner")
+local Line = Instance.new("Frame")
+local TitleText = Instance.new("TextLabel")
+local Tabs = Instance.new("Frame")
+local Line_2 = Instance.new("Frame")
+local InformationText = Instance.new("TextLabel")
+local UsernameText = Instance.new("TextLabel")
+local AimbotButton = Instance.new("TextButton")
+local MovementButton = Instance.new("TextButton")
+local MovementPage = Instance.new("Frame")
+local MovementPage2 = Instance.new("Frame")
+local AntiLockSection = Instance.new("Frame")
+local Line_3 = Instance.new("Frame")
+local AntiLock = Instance.new("TextLabel")
+local EnableUnderground = Instance.new("TextButton")
+local AntilockText = Instance.new("TextLabel")
+local EnableOverWorld = Instance.new("TextButton")
+local AntilockText_2 = Instance.new("TextLabel")
+local EnableLeft = Instance.new("TextButton")
+local AntilockText_3 = Instance.new("TextLabel")
+local EnableRight = Instance.new("TextButton")
+local AntilockText_4 = Instance.new("TextLabel")
+local MovementSection = Instance.new("Frame")
+local Line_4 = Instance.new("Frame")
+local Movement = Instance.new("TextLabel")
+local EnableCFrame = Instance.new("TextButton")
+local CFrameText = Instance.new("TextLabel")
+local CFrameBox = Instance.new("TextBox")
+local CFrameAmount = Instance.new("TextBox")
+local CFrameText_2 = Instance.new("TextLabel")
+local GeneralButton = Instance.new("TextButton")
+local AimbotPage = Instance.new("Frame")
+local AimbotPage2 = Instance.new("Frame")
+local AimbotSection = Instance.new("Frame")
+local Line_5 = Instance.new("Frame")
+local Aimbot = Instance.new("TextLabel")
+local EnableAimbot = Instance.new("TextButton")
+local AimbotText = Instance.new("TextLabel")
+local EnablePrediction = Instance.new("TextButton")
+local PredictionText = Instance.new("TextLabel")
+local EnableSmoothness = Instance.new("TextButton")
+local SmoothnessText = Instance.new("TextLabel")
+local EnableAutoPrediction = Instance.new("TextButton")
+local AutoPredictionText = Instance.new("TextLabel")
+local EnableTeamCheck = Instance.new("TextButton")
+local TeamCheckText = Instance.new("TextLabel")
+local KeybindBox = Instance.new("TextBox")
+local ModifiersSection = Instance.new("Frame")
+local Line_6 = Instance.new("Frame")
+local Modifiers = Instance.new("TextLabel")
+local EnableNotify = Instance.new("TextButton")
+local NotifyText = Instance.new("TextLabel")
+local PredictionBox = Instance.new("TextBox")
+local PredictionText_2 = Instance.new("TextLabel")
+local SmoothnessBox = Instance.new("TextBox")
+local SmoothnessText_2 = Instance.new("TextLabel")
+local AimpartButton = Instance.new("TextButton")
+local AimpartSection = Instance.new("Frame")
+local HeadButton = Instance.new("TextButton")
+local UpperTorsoButton = Instance.new("TextButton")
+local HumanoidRootPartButton = Instance.new("TextButton")
+local LowerTorsoButton = Instance.new("TextButton")
+local GeneralButton_2 = Instance.new("TextButton")
+local ResolverButton = Instance.new("TextButton")
+local ResolverPage = Instance.new("Frame")
+local ResolverSection = Instance.new("Frame")
+local Line_7 = Instance.new("Frame")
+local Resolver = Instance.new("TextLabel")
+local EnableResolver1 = Instance.new("TextButton")
+local ResolverText = Instance.new("TextLabel")
+local EnableResolver2 = Instance.new("TextButton")
+local ResolverText_2 = Instance.new("TextLabel")
+
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+Background.Name = "Background"
+Background.Parent = ScreenGui
+Background.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Background.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Background.BorderSizePixel = 0
+Background.Position = UDim2.new(0.345369965, 0, 0.276642561, 0)
+Background.Size = UDim2.new(0, 500, 0, 400)
+
+UICorner.CornerRadius = UDim.new(0, 2)
+UICorner.Parent = Background
+
+Line.Name = "Line"
+Line.Parent = Background
+Line.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line.BorderSizePixel = 0
+Line.Position = UDim2.new(0.0120000001, 0, 0.0549999997, 0)
+Line.Size = UDim2.new(0, 488, 0, 1)
+
+TitleText.Name = "TitleText"
+TitleText.Parent = Background
+TitleText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.BackgroundTransparency = 1.000
+TitleText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+TitleText.BorderSizePixel = 0
+TitleText.Position = UDim2.new(0.0120000001, 0, 0, 0)
+TitleText.Size = UDim2.new(0, 34, 0, 22)
+TitleText.Font = Enum.Font.Jura
+TitleText.Text = "Renaz"
+TitleText.TextColor3 = Color3.fromRGB(103, 103, 154)
+TitleText.TextSize = 14.000
+TitleText.TextStrokeTransparency = 0.000
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+
+Tabs.Name = "Tabs"
+Tabs.Parent = Background
+Tabs.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Tabs.BorderColor3 = Color3.fromRGB(25, 25, 25)
+Tabs.Position = UDim2.new(0.0120000001, 0, 0.0775000006, 0)
+Tabs.Size = UDim2.new(0, 100, 0, 340)
+
+Line_2.Name = "Line"
+Line_2.Parent = Background
+Line_2.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_2.BorderSizePixel = 0
+Line_2.Position = UDim2.new(0.0120000001, 0, 0.944999993, 0)
+Line_2.Size = UDim2.new(0, 488, 0, 1)
+
+InformationText.Name = "InformationText"
+InformationText.Parent = Background
+InformationText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+InformationText.BackgroundTransparency = 1.000
+InformationText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+InformationText.BorderSizePixel = 0
+InformationText.Position = UDim2.new(0.0120000001, 0, 0.94749999, 0)
+InformationText.Size = UDim2.new(0, 34, 0, 21)
+InformationText.Font = Enum.Font.Jura
+InformationText.Text = "MEMz.exe  - Stable | vc_redist.arm64.exe - Stable"
+InformationText.TextColor3 = Color3.fromRGB(103, 103, 154)
+InformationText.TextSize = 14.000
+InformationText.TextStrokeTransparency = 0.000
+InformationText.TextXAlignment = Enum.TextXAlignment.Left
+
+UsernameText.Name = "UsernameText"
+UsernameText.Parent = Background
+UsernameText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+UsernameText.BackgroundTransparency = 1.000
+UsernameText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+UsernameText.BorderSizePixel = 0
+UsernameText.Position = UDim2.new(0.726000011, 0, 0.94749999, 0)
+UsernameText.Size = UDim2.new(0, 131, 0, 21)
+UsernameText.Font = Enum.Font.Jura
+UsernameText.Text = "Username"
+UsernameText.TextColor3 = Color3.fromRGB(103, 103, 154)
+UsernameText.TextSize = 14.000
+UsernameText.TextStrokeTransparency = 0.000
+
+AimbotButton.Name = "AimbotButton"
+AimbotButton.Parent = Background
+AimbotButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AimbotButton.BackgroundTransparency = 1.000
+AimbotButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AimbotButton.BorderSizePixel = 0
+AimbotButton.Position = UDim2.new(0.225999996, 0, 0, 0)
+AimbotButton.Size = UDim2.new(0, 70, 0, 22)
+AimbotButton.Font = Enum.Font.Jura
+AimbotButton.Text = "Aimbot"
+AimbotButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+AimbotButton.TextSize = 13.000
+AimbotButton.TextStrokeTransparency = 0.000
+
+MovementButton.Name = "MovementButton"
+MovementButton.Parent = Background
+MovementButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MovementButton.BackgroundTransparency = 1.000
+MovementButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+MovementButton.BorderSizePixel = 0
+MovementButton.Position = UDim2.new(0.365999997, 0, 0, 0)
+MovementButton.Size = UDim2.new(0, 70, 0, 22)
+MovementButton.Font = Enum.Font.Jura
+MovementButton.Text = "Movement"
+MovementButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+MovementButton.TextSize = 13.000
+MovementButton.TextStrokeTransparency = 0.000
+
+MovementPage.Name = "MovementPage"
+MovementPage.Parent = Background
+MovementPage.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MovementPage.BorderColor3 = Color3.fromRGB(25, 25, 25)
+MovementPage.Position = UDim2.new(0.224999994, 0, 0.0780000016, 0)
+MovementPage.Size = UDim2.new(0, 381, 0, 340)
+MovementPage.Visible = false
+MovementPage.ZIndex = 2
+
+MovementPage2.Name = "MovementPage2"
+MovementPage2.Parent = MovementPage
+MovementPage2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MovementPage2.BackgroundTransparency = 0.990
+MovementPage2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+MovementPage2.BorderSizePixel = 0
+MovementPage2.Position = UDim2.new(0.367000014, 0, 0.349999994, 0)
+MovementPage2.Size = UDim2.new(0, 100, 0, 100)
+MovementPage2.ZIndex = 2
+
+AntiLockSection.Name = "AntiLockSection"
+AntiLockSection.Parent = MovementPage2
+AntiLockSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+AntiLockSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+AntiLockSection.Position = UDim2.new(-1.3359741, 0, -1.13132322, 0)
+AntiLockSection.Size = UDim2.new(0, 180, 0, 327)
+AntiLockSection.ZIndex = 2
+
+Line_3.Name = "Line"
+Line_3.Parent = AntiLockSection
+Line_3.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_3.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_3.BorderSizePixel = 0
+Line_3.Position = UDim2.new(0, 0, 0.0611620806, 0)
+Line_3.Size = UDim2.new(0, 180, 0, 1)
+
+AntiLock.Name = "AntiLock"
+AntiLock.Parent = AntiLockSection
+AntiLock.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AntiLock.BackgroundTransparency = 1.000
+AntiLock.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AntiLock.BorderSizePixel = 0
+AntiLock.Position = UDim2.new(0.0342224129, 0, 0, 0)
+AntiLock.Size = UDim2.new(0, 27, 0, 22)
+AntiLock.Font = Enum.Font.Jura
+AntiLock.Text = "Anti Lock"
+AntiLock.TextColor3 = Color3.fromRGB(103, 103, 154)
+AntiLock.TextSize = 14.000
+AntiLock.TextStrokeTransparency = 0.000
+AntiLock.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableUnderground.Name = "EnableUnderground"
+EnableUnderground.Parent = AntiLockSection
+EnableUnderground.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableUnderground.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableUnderground.Position = UDim2.new(0.0333333351, 0, 0.0856269076, 0)
+EnableUnderground.Size = UDim2.new(0, 10, 0, 10)
+EnableUnderground.Font = Enum.Font.SourceSans
+EnableUnderground.Text = ""
+EnableUnderground.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableUnderground.TextSize = 14.000
+
+AntilockText.Name = "AntilockText"
+AntilockText.Parent = EnableUnderground
+AntilockText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AntilockText.BackgroundTransparency = 1.000
+AntilockText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AntilockText.BorderSizePixel = 0
+AntilockText.Position = UDim2.new(1.60000002, 0, 0, 0)
+AntilockText.Size = UDim2.new(0, 40, 0, 10)
+AntilockText.Font = Enum.Font.Jura
+AntilockText.Text = "Underground"
+AntilockText.TextColor3 = Color3.fromRGB(103, 103, 154)
+AntilockText.TextSize = 12.000
+AntilockText.TextStrokeTransparency = 0.000
+AntilockText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableOverWorld.Name = "EnableOverWorld"
+EnableOverWorld.Parent = AntiLockSection
+EnableOverWorld.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableOverWorld.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableOverWorld.Position = UDim2.new(0.0333333351, 0, 0.134556577, 0)
+EnableOverWorld.Size = UDim2.new(0, 10, 0, 10)
+EnableOverWorld.Font = Enum.Font.SourceSans
+EnableOverWorld.Text = ""
+EnableOverWorld.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableOverWorld.TextSize = 14.000
+
+AntilockText_2.Name = "AntilockText"
+AntilockText_2.Parent = EnableOverWorld
+AntilockText_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AntilockText_2.BackgroundTransparency = 1.000
+AntilockText_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AntilockText_2.BorderSizePixel = 0
+AntilockText_2.Position = UDim2.new(1.60000002, 0, 0, 0)
+AntilockText_2.Size = UDim2.new(0, 40, 0, 10)
+AntilockText_2.Font = Enum.Font.Jura
+AntilockText_2.Text = "Overworld"
+AntilockText_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+AntilockText_2.TextSize = 12.000
+AntilockText_2.TextStrokeTransparency = 0.000
+AntilockText_2.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableLeft.Name = "EnableLeft"
+EnableLeft.Parent = AntiLockSection
+EnableLeft.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableLeft.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableLeft.Position = UDim2.new(0.0333333351, 0, 0.183486238, 0)
+EnableLeft.Size = UDim2.new(0, 10, 0, 10)
+EnableLeft.Font = Enum.Font.SourceSans
+EnableLeft.Text = ""
+EnableLeft.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableLeft.TextSize = 14.000
+
+AntilockText_3.Name = "AntilockText"
+AntilockText_3.Parent = EnableLeft
+AntilockText_3.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AntilockText_3.BackgroundTransparency = 1.000
+AntilockText_3.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AntilockText_3.BorderSizePixel = 0
+AntilockText_3.Position = UDim2.new(1.60000002, 0, 0, 0)
+AntilockText_3.Size = UDim2.new(0, 40, 0, 10)
+AntilockText_3.Font = Enum.Font.Jura
+AntilockText_3.Text = "Left Side"
+AntilockText_3.TextColor3 = Color3.fromRGB(103, 103, 154)
+AntilockText_3.TextSize = 12.000
+AntilockText_3.TextStrokeTransparency = 0.000
+AntilockText_3.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableRight.Name = "EnableRight"
+EnableRight.Parent = AntiLockSection
+EnableRight.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableRight.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableRight.Position = UDim2.new(0.0333333351, 0, 0.2324159, 0)
+EnableRight.Size = UDim2.new(0, 10, 0, 10)
+EnableRight.Font = Enum.Font.SourceSans
+EnableRight.Text = ""
+EnableRight.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableRight.TextSize = 14.000
+
+AntilockText_4.Name = "AntilockText"
+AntilockText_4.Parent = EnableRight
+AntilockText_4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AntilockText_4.BackgroundTransparency = 1.000
+AntilockText_4.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AntilockText_4.BorderSizePixel = 0
+AntilockText_4.Position = UDim2.new(1.60000002, 0, 0, 0)
+AntilockText_4.Size = UDim2.new(0, 40, 0, 10)
+AntilockText_4.Font = Enum.Font.Jura
+AntilockText_4.Text = "Right Side"
+AntilockText_4.TextColor3 = Color3.fromRGB(103, 103, 154)
+AntilockText_4.TextSize = 12.000
+AntilockText_4.TextStrokeTransparency = 0.000
+AntilockText_4.TextXAlignment = Enum.TextXAlignment.Left
+
+MovementSection.Name = "MovementSection"
+MovementSection.Parent = MovementPage2
+MovementSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MovementSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+MovementSection.Position = UDim2.new(0.544926763, 0, -1.13132322, 0)
+MovementSection.Size = UDim2.new(0, 180, 0, 327)
+MovementSection.ZIndex = 2
+
+Line_4.Name = "Line"
+Line_4.Parent = MovementSection
+Line_4.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_4.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_4.BorderSizePixel = 0
+Line_4.Position = UDim2.new(0, 0, 0.0611620806, 0)
+Line_4.Size = UDim2.new(0, 180, 0, 1)
+
+Movement.Name = "Movement"
+Movement.Parent = MovementSection
+Movement.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Movement.BackgroundTransparency = 1.000
+Movement.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Movement.BorderSizePixel = 0
+Movement.Position = UDim2.new(0.0342224129, 0, 0, 0)
+Movement.Size = UDim2.new(0, 30, 0, 22)
+Movement.Font = Enum.Font.Jura
+Movement.Text = "Movement"
+Movement.TextColor3 = Color3.fromRGB(103, 103, 154)
+Movement.TextSize = 14.000
+Movement.TextStrokeTransparency = 0.000
+Movement.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableCFrame.Name = "EnableCFrame"
+EnableCFrame.Parent = MovementSection
+EnableCFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableCFrame.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableCFrame.Position = UDim2.new(0.0333333351, 0, 0.0856269076, 0)
+EnableCFrame.Size = UDim2.new(0, 10, 0, 10)
+EnableCFrame.ZIndex = 2
+EnableCFrame.Font = Enum.Font.SourceSans
+EnableCFrame.Text = ""
+EnableCFrame.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableCFrame.TextSize = 14.000
+
+CFrameText.Name = "CFrameText"
+CFrameText.Parent = EnableCFrame
+CFrameText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+CFrameText.BackgroundTransparency = 1.000
+CFrameText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+CFrameText.BorderSizePixel = 0
+CFrameText.Position = UDim2.new(1.60000002, 0, 0, 0)
+CFrameText.Size = UDim2.new(0, 40, 0, 10)
+CFrameText.Font = Enum.Font.Jura
+CFrameText.Text = "CFrame Speed"
+CFrameText.TextColor3 = Color3.fromRGB(103, 103, 154)
+CFrameText.TextSize = 12.000
+CFrameText.TextStrokeTransparency = 0.000
+CFrameText.TextXAlignment = Enum.TextXAlignment.Left
+
+CFrameBox.Name = "CFrameBox"
+CFrameBox.Parent = MovementSection
+CFrameBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+CFrameBox.BorderColor3 = Color3.fromRGB(25, 25, 25)
+CFrameBox.Position = UDim2.new(0.739000022, 0, 0.0860000029, 0)
+CFrameBox.Size = UDim2.new(0, 35, 0, 10)
+CFrameBox.ZIndex = 2
+CFrameBox.Font = Enum.Font.Jura
+CFrameBox.PlaceholderColor3 = Color3.fromRGB(103, 103, 154)
+CFrameBox.PlaceholderText = "[None]"
+CFrameBox.Text = ""
+CFrameBox.TextColor3 = Color3.fromRGB(103, 103, 154)
+CFrameBox.TextSize = 11.000
+CFrameBox.TextStrokeTransparency = 0.000
+
+CFrameAmount.Name = "CFrameAmount"
+CFrameAmount.Parent = MovementSection
+CFrameAmount.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+CFrameAmount.BorderColor3 = Color3.fromRGB(25, 25, 25)
+CFrameAmount.Position = UDim2.new(0.0333333351, 0, 0.168195724, 0)
+CFrameAmount.Size = UDim2.new(0, 168, 0, 10)
+CFrameAmount.ZIndex = 2
+CFrameAmount.Font = Enum.Font.Jura
+CFrameAmount.PlaceholderColor3 = Color3.fromRGB(103, 103, 154)
+CFrameAmount.PlaceholderText = "Amount"
+CFrameAmount.Text = ""
+CFrameAmount.TextColor3 = Color3.fromRGB(103, 103, 154)
+CFrameAmount.TextSize = 11.000
+CFrameAmount.TextStrokeTransparency = 0.000
+
+CFrameText_2.Name = "CFrameText"
+CFrameText_2.Parent = CFrameAmount
+CFrameText_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+CFrameText_2.BackgroundTransparency = 1.000
+CFrameText_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+CFrameText_2.BorderSizePixel = 0
+CFrameText_2.Position = UDim2.new(-0.00119018555, 0, -1, 0)
+CFrameText_2.Size = UDim2.new(0, 40, 0, 4)
+CFrameText_2.Font = Enum.Font.Jura
+CFrameText_2.Text = "Speed"
+CFrameText_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+CFrameText_2.TextSize = 12.000
+CFrameText_2.TextStrokeTransparency = 0.000
+CFrameText_2.TextXAlignment = Enum.TextXAlignment.Left
+
+GeneralButton.Name = "GeneralButton"
+GeneralButton.Parent = MovementPage
+GeneralButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+GeneralButton.BackgroundTransparency = 1.000
+GeneralButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+GeneralButton.BorderSizePixel = 0
+GeneralButton.Position = UDim2.new(-0.222504064, 0, 0.0155881997, 0)
+GeneralButton.Size = UDim2.new(0, 55, 0, 22)
+GeneralButton.Font = Enum.Font.Jura
+GeneralButton.Text = "| General"
+GeneralButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+GeneralButton.TextSize = 15.000
+GeneralButton.TextStrokeTransparency = 0.000
+GeneralButton.TextXAlignment = Enum.TextXAlignment.Left
+
+AimbotPage.Name = "AimbotPage"
+AimbotPage.Parent = Background
+AimbotPage.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+AimbotPage.BorderColor3 = Color3.fromRGB(25, 25, 25)
+AimbotPage.Position = UDim2.new(0.224999994, 0, 0.0775000006, 0)
+AimbotPage.Size = UDim2.new(0, 381, 0, 340)
+
+AimbotPage2.Name = "AimbotPage2"
+AimbotPage2.Parent = AimbotPage
+AimbotPage2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AimbotPage2.BackgroundTransparency = 0.990
+AimbotPage2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AimbotPage2.BorderSizePixel = 0
+AimbotPage2.Position = UDim2.new(0.367000014, 0, 0.349999994, 0)
+AimbotPage2.Size = UDim2.new(0, 100, 0, 100)
+AimbotPage2.ZIndex = 2
+
+AimbotSection.Name = "AimbotSection"
+AimbotSection.Parent = AimbotPage2
+AimbotSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+AimbotSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+AimbotSection.Position = UDim2.new(-1.3359741, 0, -1.13132322, 0)
+AimbotSection.Size = UDim2.new(0, 180, 0, 327)
+
+Line_5.Name = "Line"
+Line_5.Parent = AimbotSection
+Line_5.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_5.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_5.BorderSizePixel = 0
+Line_5.Position = UDim2.new(0, 0, 0.0611620806, 0)
+Line_5.Size = UDim2.new(0, 180, 0, 1)
+
+Aimbot.Name = "Aimbot"
+Aimbot.Parent = AimbotSection
+Aimbot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Aimbot.BackgroundTransparency = 1.000
+Aimbot.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Aimbot.BorderSizePixel = 0
+Aimbot.Position = UDim2.new(0.0342224129, 0, 0, 0)
+Aimbot.Size = UDim2.new(0, 27, 0, 22)
+Aimbot.Font = Enum.Font.Jura
+Aimbot.Text = "Main"
+Aimbot.TextColor3 = Color3.fromRGB(103, 103, 154)
+Aimbot.TextSize = 14.000
+Aimbot.TextStrokeTransparency = 0.000
+Aimbot.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableAimbot.Name = "EnableAimbot"
+EnableAimbot.Parent = AimbotSection
+EnableAimbot.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableAimbot.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableAimbot.Position = UDim2.new(0.0333333351, 0, 0.0856269076, 0)
+EnableAimbot.Size = UDim2.new(0, 10, 0, 10)
+EnableAimbot.Font = Enum.Font.SourceSans
+EnableAimbot.Text = ""
+EnableAimbot.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableAimbot.TextSize = 14.000
+
+AimbotText.Name = "AimbotText"
+AimbotText.Parent = EnableAimbot
+AimbotText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AimbotText.BackgroundTransparency = 1.000
+AimbotText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AimbotText.BorderSizePixel = 0
+AimbotText.Position = UDim2.new(1.60000002, 0, 0, 0)
+AimbotText.Size = UDim2.new(0, 40, 0, 10)
+AimbotText.Font = Enum.Font.Jura
+AimbotText.Text = "Enable"
+AimbotText.TextColor3 = Color3.fromRGB(103, 103, 154)
+AimbotText.TextSize = 12.000
+AimbotText.TextStrokeTransparency = 0.000
+AimbotText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnablePrediction.Name = "EnablePrediction"
+EnablePrediction.Parent = AimbotSection
+EnablePrediction.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnablePrediction.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnablePrediction.Position = UDim2.new(0.0333333351, 0, 0.134556577, 0)
+EnablePrediction.Size = UDim2.new(0, 10, 0, 10)
+EnablePrediction.Font = Enum.Font.SourceSans
+EnablePrediction.Text = ""
+EnablePrediction.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnablePrediction.TextSize = 14.000
+
+PredictionText.Name = "PredictionText"
+PredictionText.Parent = EnablePrediction
+PredictionText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PredictionText.BackgroundTransparency = 1.000
+PredictionText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+PredictionText.BorderSizePixel = 0
+PredictionText.Position = UDim2.new(1.60000002, 0, 0, 0)
+PredictionText.Size = UDim2.new(0, 40, 0, 10)
+PredictionText.Font = Enum.Font.Jura
+PredictionText.Text = "Prediction"
+PredictionText.TextColor3 = Color3.fromRGB(103, 103, 154)
+PredictionText.TextSize = 12.000
+PredictionText.TextStrokeTransparency = 0.000
+PredictionText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableSmoothness.Name = "EnableSmoothness"
+EnableSmoothness.Parent = AimbotSection
+EnableSmoothness.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableSmoothness.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableSmoothness.Position = UDim2.new(0.0333333351, 0, 0.183486238, 0)
+EnableSmoothness.Size = UDim2.new(0, 10, 0, 10)
+EnableSmoothness.Font = Enum.Font.SourceSans
+EnableSmoothness.Text = ""
+EnableSmoothness.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableSmoothness.TextSize = 14.000
+
+SmoothnessText.Name = "SmoothnessText"
+SmoothnessText.Parent = EnableSmoothness
+SmoothnessText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SmoothnessText.BackgroundTransparency = 1.000
+SmoothnessText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+SmoothnessText.BorderSizePixel = 0
+SmoothnessText.Position = UDim2.new(1.60000002, 0, 0, 0)
+SmoothnessText.Size = UDim2.new(0, 40, 0, 10)
+SmoothnessText.Font = Enum.Font.Jura
+SmoothnessText.Text = "Smoothness"
+SmoothnessText.TextColor3 = Color3.fromRGB(103, 103, 154)
+SmoothnessText.TextSize = 12.000
+SmoothnessText.TextStrokeTransparency = 0.000
+SmoothnessText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableAutoPrediction.Name = "EnableAutoPrediction"
+EnableAutoPrediction.Parent = AimbotSection
+EnableAutoPrediction.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableAutoPrediction.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableAutoPrediction.Position = UDim2.new(0.0333333351, 0, 0.2324159, 0)
+EnableAutoPrediction.Size = UDim2.new(0, 10, 0, 10)
+EnableAutoPrediction.Font = Enum.Font.SourceSans
+EnableAutoPrediction.Text = ""
+EnableAutoPrediction.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableAutoPrediction.TextSize = 14.000
+
+AutoPredictionText.Name = "AutoPredictionText"
+AutoPredictionText.Parent = EnableAutoPrediction
+AutoPredictionText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+AutoPredictionText.BackgroundTransparency = 1.000
+AutoPredictionText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+AutoPredictionText.BorderSizePixel = 0
+AutoPredictionText.Position = UDim2.new(1.60000002, 0, 0, 0)
+AutoPredictionText.Size = UDim2.new(0, 40, 0, 10)
+AutoPredictionText.Font = Enum.Font.Jura
+AutoPredictionText.Text = "Auto Prediction"
+AutoPredictionText.TextColor3 = Color3.fromRGB(103, 103, 154)
+AutoPredictionText.TextSize = 12.000
+AutoPredictionText.TextStrokeTransparency = 0.000
+AutoPredictionText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableTeamCheck.Name = "EnableTeamCheck"
+EnableTeamCheck.Parent = AimbotSection
+EnableTeamCheck.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableTeamCheck.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableTeamCheck.Position = UDim2.new(0.0333333351, 0, 0.281345576, 0)
+EnableTeamCheck.Size = UDim2.new(0, 10, 0, 10)
+EnableTeamCheck.Font = Enum.Font.SourceSans
+EnableTeamCheck.Text = ""
+EnableTeamCheck.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableTeamCheck.TextSize = 14.000
+
+TeamCheckText.Name = "TeamCheckText"
+TeamCheckText.Parent = EnableTeamCheck
+TeamCheckText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+TeamCheckText.BackgroundTransparency = 1.000
+TeamCheckText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+TeamCheckText.BorderSizePixel = 0
+TeamCheckText.Position = UDim2.new(1.60000002, 0, 0, 0)
+TeamCheckText.Size = UDim2.new(0, 40, 0, 10)
+TeamCheckText.Font = Enum.Font.Jura
+TeamCheckText.Text = "Team Check"
+TeamCheckText.TextColor3 = Color3.fromRGB(103, 103, 154)
+TeamCheckText.TextSize = 12.000
+TeamCheckText.TextStrokeTransparency = 0.000
+TeamCheckText.TextXAlignment = Enum.TextXAlignment.Left
+
+KeybindBox.Name = "KeybindBox"
+KeybindBox.Parent = AimbotSection
+KeybindBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+KeybindBox.BorderColor3 = Color3.fromRGB(25, 25, 25)
+KeybindBox.Position = UDim2.new(0.73888886, 0, 0.0856269076, 0)
+KeybindBox.Size = UDim2.new(0, 35, 0, 10)
+KeybindBox.Font = Enum.Font.Jura
+KeybindBox.PlaceholderColor3 = Color3.fromRGB(103, 103, 154)
+KeybindBox.PlaceholderText = "[None]"
+KeybindBox.Text = ""
+KeybindBox.TextColor3 = Color3.fromRGB(103, 103, 154)
+KeybindBox.TextSize = 11.000
+KeybindBox.TextStrokeTransparency = 0.000
+
+ModifiersSection.Name = "ModifiersSection"
+ModifiersSection.Parent = AimbotPage2
+ModifiersSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ModifiersSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+ModifiersSection.Position = UDim2.new(0.544926763, 0, -1.13132322, 0)
+ModifiersSection.Size = UDim2.new(0, 180, 0, 327)
+
+Line_6.Name = "Line"
+Line_6.Parent = ModifiersSection
+Line_6.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_6.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_6.BorderSizePixel = 0
+Line_6.Position = UDim2.new(0, 0, 0.0611620806, 0)
+Line_6.Size = UDim2.new(0, 180, 0, 1)
+
+Modifiers.Name = "Modifiers"
+Modifiers.Parent = ModifiersSection
+Modifiers.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Modifiers.BackgroundTransparency = 1.000
+Modifiers.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Modifiers.BorderSizePixel = 0
+Modifiers.Position = UDim2.new(0.0342224129, 0, 0, 0)
+Modifiers.Size = UDim2.new(0, 30, 0, 22)
+Modifiers.Font = Enum.Font.Jura
+Modifiers.Text = "Setting"
+Modifiers.TextColor3 = Color3.fromRGB(103, 103, 154)
+Modifiers.TextSize = 14.000
+Modifiers.TextStrokeTransparency = 0.000
+Modifiers.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableNotify.Name = "EnableNotify"
+EnableNotify.Parent = ModifiersSection
+EnableNotify.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableNotify.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableNotify.Position = UDim2.new(0.0333333351, 0, 0.0856269076, 0)
+EnableNotify.Size = UDim2.new(0, 10, 0, 10)
+EnableNotify.Font = Enum.Font.SourceSans
+EnableNotify.Text = ""
+EnableNotify.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableNotify.TextSize = 14.000
+
+NotifyText.Name = "NotifyText"
+NotifyText.Parent = EnableNotify
+NotifyText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+NotifyText.BackgroundTransparency = 1.000
+NotifyText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+NotifyText.BorderSizePixel = 0
+NotifyText.Position = UDim2.new(1.60000002, 0, 0, 0)
+NotifyText.Size = UDim2.new(0, 40, 0, 10)
+NotifyText.Font = Enum.Font.Jura
+NotifyText.Text = "Notification"
+NotifyText.TextColor3 = Color3.fromRGB(103, 103, 154)
+NotifyText.TextSize = 12.000
+NotifyText.TextStrokeTransparency = 0.000
+NotifyText.TextXAlignment = Enum.TextXAlignment.Left
+
+PredictionBox.Name = "PredictionBox"
+PredictionBox.Parent = ModifiersSection
+PredictionBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+PredictionBox.BorderColor3 = Color3.fromRGB(25, 25, 25)
+PredictionBox.Position = UDim2.new(0.0333333351, 0, 0.168195724, 0)
+PredictionBox.Size = UDim2.new(0, 168, 0, 10)
+PredictionBox.Font = Enum.Font.Jura
+PredictionBox.PlaceholderColor3 = Color3.fromRGB(103, 103, 154)
+PredictionBox.PlaceholderText = "Amount"
+PredictionBox.Text = ""
+PredictionBox.TextColor3 = Color3.fromRGB(103, 103, 154)
+PredictionBox.TextSize = 11.000
+PredictionBox.TextStrokeTransparency = 0.000
+
+PredictionText_2.Name = "PredictionText"
+PredictionText_2.Parent = PredictionBox
+PredictionText_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PredictionText_2.BackgroundTransparency = 1.000
+PredictionText_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+PredictionText_2.BorderSizePixel = 0
+PredictionText_2.Position = UDim2.new(-0.00119018555, 0, -1, 0)
+PredictionText_2.Size = UDim2.new(0, 40, 0, 4)
+PredictionText_2.Font = Enum.Font.Jura
+PredictionText_2.Text = "Prediction"
+PredictionText_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+PredictionText_2.TextSize = 12.000
+PredictionText_2.TextStrokeTransparency = 0.000
+PredictionText_2.TextXAlignment = Enum.TextXAlignment.Left
+
+SmoothnessBox.Name = "SmoothnessBox"
+SmoothnessBox.Parent = ModifiersSection
+SmoothnessBox.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+SmoothnessBox.BorderColor3 = Color3.fromRGB(25, 25, 25)
+SmoothnessBox.Position = UDim2.new(0.0333333351, 0, 0.247706428, 0)
+SmoothnessBox.Size = UDim2.new(0, 168, 0, 10)
+SmoothnessBox.Font = Enum.Font.Jura
+SmoothnessBox.PlaceholderColor3 = Color3.fromRGB(103, 103, 154)
+SmoothnessBox.PlaceholderText = "Amount"
+SmoothnessBox.Text = ""
+SmoothnessBox.TextColor3 = Color3.fromRGB(103, 103, 154)
+SmoothnessBox.TextSize = 11.000
+SmoothnessBox.TextStrokeTransparency = 0.000
+
+SmoothnessText_2.Name = "SmoothnessText"
+SmoothnessText_2.Parent = SmoothnessBox
+SmoothnessText_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SmoothnessText_2.BackgroundTransparency = 1.000
+SmoothnessText_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+SmoothnessText_2.BorderSizePixel = 0
+SmoothnessText_2.Position = UDim2.new(-0.00119018555, 0, -1, 0)
+SmoothnessText_2.Size = UDim2.new(0, 40, 0, 4)
+SmoothnessText_2.Font = Enum.Font.Jura
+SmoothnessText_2.Text = "Smoothness"
+SmoothnessText_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+SmoothnessText_2.TextSize = 12.000
+SmoothnessText_2.TextStrokeTransparency = 0.000
+SmoothnessText_2.TextXAlignment = Enum.TextXAlignment.Left
+
+AimpartButton.Name = "AimpartButton"
+AimpartButton.Parent = ModifiersSection
+AimpartButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+AimpartButton.BorderColor3 = Color3.fromRGB(25, 25, 25)
+AimpartButton.Position = UDim2.new(0.0333333351, 0, 0.296636075, 0)
+AimpartButton.Size = UDim2.new(0, 168, 0, 10)
+AimpartButton.Font = Enum.Font.Jura
+AimpartButton.Text = "Aimpart  +"
+AimpartButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+AimpartButton.TextSize = 13.000
+AimpartButton.TextStrokeTransparency = 0.000
+AimpartButton.TextWrapped = true
+
+AimpartSection.Name = "AimpartSection"
+AimpartSection.Parent = AimpartButton
+AimpartSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+AimpartSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+AimpartSection.Position = UDim2.new(0, 0, 1.60000002, 0)
+AimpartSection.Size = UDim2.new(0, 168, 0, 75)
+AimpartSection.Visible = false
+
+HeadButton.Name = "HeadButton"
+HeadButton.Parent = AimpartSection
+HeadButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+HeadButton.BorderColor3 = Color3.fromRGB(25, 25, 25)
+HeadButton.Position = UDim2.new(0.0476190485, 0, 0.0818440765, 0)
+HeadButton.Size = UDim2.new(0, 152, 0, 10)
+HeadButton.Font = Enum.Font.Jura
+HeadButton.Text = "Head"
+HeadButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+HeadButton.TextSize = 13.000
+HeadButton.TextStrokeTransparency = 0.000
+HeadButton.TextWrapped = true
+
+UpperTorsoButton.Name = "UpperTorsoButton"
+UpperTorsoButton.Parent = AimpartSection
+UpperTorsoButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+UpperTorsoButton.BorderColor3 = Color3.fromRGB(25, 25, 25)
+UpperTorsoButton.Position = UDim2.new(0.0476190485, 0, 0.300177395, 0)
+UpperTorsoButton.Size = UDim2.new(0, 152, 0, 10)
+UpperTorsoButton.Font = Enum.Font.Jura
+UpperTorsoButton.Text = "UpperTorso"
+UpperTorsoButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+UpperTorsoButton.TextSize = 13.000
+UpperTorsoButton.TextStrokeTransparency = 0.000
+UpperTorsoButton.TextWrapped = true
+
+HumanoidRootPartButton.Name = "HumanoidRootPartButton"
+HumanoidRootPartButton.Parent = AimpartSection
+HumanoidRootPartButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+HumanoidRootPartButton.BorderColor3 = Color3.fromRGB(25, 25, 25)
+HumanoidRootPartButton.Position = UDim2.new(0.0476190485, 0, 0.540594101, 0)
+HumanoidRootPartButton.Size = UDim2.new(0, 152, 0, 10)
+HumanoidRootPartButton.Font = Enum.Font.Jura
+HumanoidRootPartButton.Text = "HumanoidRootPart"
+HumanoidRootPartButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+HumanoidRootPartButton.TextSize = 13.000
+HumanoidRootPartButton.TextStrokeTransparency = 0.000
+HumanoidRootPartButton.TextWrapped = true
+
+LowerTorsoButton.Name = "LowerTorsoButton"
+LowerTorsoButton.Parent = AimpartSection
+LowerTorsoButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+LowerTorsoButton.BorderColor3 = Color3.fromRGB(25, 25, 25)
+LowerTorsoButton.Position = UDim2.new(0.0476190485, 0, 0.763511539, 0)
+LowerTorsoButton.Size = UDim2.new(0, 152, 0, 10)
+LowerTorsoButton.Font = Enum.Font.Jura
+LowerTorsoButton.Text = "LowerTorso"
+LowerTorsoButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+LowerTorsoButton.TextSize = 13.000
+LowerTorsoButton.TextStrokeTransparency = 0.000
+LowerTorsoButton.TextWrapped = true
+
+GeneralButton_2.Name = "GeneralButton"
+GeneralButton_2.Parent = AimbotPage
+GeneralButton_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+GeneralButton_2.BackgroundTransparency = 1.000
+GeneralButton_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+GeneralButton_2.BorderSizePixel = 0
+GeneralButton_2.Position = UDim2.new(-0.222504064, 0, 0.0155881997, 0)
+GeneralButton_2.Size = UDim2.new(0, 55, 0, 22)
+GeneralButton_2.Font = Enum.Font.Jura
+GeneralButton_2.Text = "| General"
+GeneralButton_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+GeneralButton_2.TextSize = 15.000
+GeneralButton_2.TextStrokeTransparency = 0.000
+GeneralButton_2.TextXAlignment = Enum.TextXAlignment.Left
+
+ResolverButton.Name = "ResolverButton"
+ResolverButton.Parent = AimbotPage
+ResolverButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ResolverButton.BackgroundTransparency = 1.000
+ResolverButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+ResolverButton.BorderSizePixel = 0
+ResolverButton.Position = UDim2.new(-0.222504064, 0, 0.0861764327, 0)
+ResolverButton.Size = UDim2.new(0, 55, 0, 22)
+ResolverButton.Font = Enum.Font.Jura
+ResolverButton.Text = "| Resolver"
+ResolverButton.TextColor3 = Color3.fromRGB(103, 103, 154)
+ResolverButton.TextSize = 15.000
+ResolverButton.TextStrokeTransparency = 0.000
+ResolverButton.TextXAlignment = Enum.TextXAlignment.Left
+
+ResolverPage.Name = "ResolverPage"
+ResolverPage.Parent = AimbotPage
+ResolverPage.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ResolverPage.BackgroundTransparency = 1.000
+ResolverPage.BorderColor3 = Color3.fromRGB(0, 0, 0)
+ResolverPage.BorderSizePixel = 0
+ResolverPage.Position = UDim2.new(0.367454082, 0, 0.349999994, 0)
+ResolverPage.Size = UDim2.new(0, 100, 0, 100)
+ResolverPage.Visible = false
+ResolverPage.ZIndex = 2
+
+ResolverSection.Name = "ResolverSection"
+ResolverSection.Parent = ResolverPage
+ResolverSection.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ResolverSection.BorderColor3 = Color3.fromRGB(25, 25, 25)
+ResolverSection.Position = UDim2.new(-1.3359741, 0, -1.13132322, 0)
+ResolverSection.Size = UDim2.new(0, 366, 0, 327)
+
+Line_7.Name = "Line"
+Line_7.Parent = ResolverSection
+Line_7.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Line_7.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Line_7.BorderSizePixel = 0
+Line_7.Position = UDim2.new(4.0908283e-08, 0, 0.0611620806, 0)
+Line_7.Size = UDim2.new(0, 366, 0, 1)
+
+Resolver.Name = "Resolver"
+Resolver.Parent = ResolverSection
+Resolver.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Resolver.BackgroundTransparency = 1.000
+Resolver.BorderColor3 = Color3.fromRGB(0, 0, 0)
+Resolver.BorderSizePixel = 0
+Resolver.Position = UDim2.new(0.0342224129, 0, 0, 0)
+Resolver.Size = UDim2.new(0, 27, 0, 22)
+Resolver.Font = Enum.Font.Jura
+Resolver.Text = "Resolver Setting"
+Resolver.TextColor3 = Color3.fromRGB(103, 103, 154)
+Resolver.TextSize = 14.000
+Resolver.TextStrokeTransparency = 0.000
+Resolver.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableResolver1.Name = "EnableResolver1"
+EnableResolver1.Parent = ResolverSection
+EnableResolver1.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableResolver1.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableResolver1.Position = UDim2.new(0.0329999998, 0, 0.0860000029, 0)
+EnableResolver1.Size = UDim2.new(0, 10, 0, 10)
+EnableResolver1.Font = Enum.Font.SourceSans
+EnableResolver1.Text = ""
+EnableResolver1.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableResolver1.TextSize = 14.000
+
+ResolverText.Name = "ResolverText"
+ResolverText.Parent = EnableResolver1
+ResolverText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ResolverText.BackgroundTransparency = 1.000
+ResolverText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+ResolverText.BorderSizePixel = 0
+ResolverText.Position = UDim2.new(1.60000002, 0, 0, 0)
+ResolverText.Size = UDim2.new(0, 40, 0, 10)
+ResolverText.Font = Enum.Font.Jura
+ResolverText.Text = "No Prediction"
+ResolverText.TextColor3 = Color3.fromRGB(103, 103, 154)
+ResolverText.TextSize = 12.000
+ResolverText.TextStrokeTransparency = 0.000
+ResolverText.TextXAlignment = Enum.TextXAlignment.Left
+
+EnableResolver2.Name = "EnableResolver2"
+EnableResolver2.Parent = ResolverSection
+EnableResolver2.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+EnableResolver2.BorderColor3 = Color3.fromRGB(25, 25, 25)
+EnableResolver2.Position = UDim2.new(0.0329999998, 0, 0.135000005, 0)
+EnableResolver2.Size = UDim2.new(0, 10, 0, 10)
+EnableResolver2.Font = Enum.Font.SourceSans
+EnableResolver2.Text = ""
+EnableResolver2.TextColor3 = Color3.fromRGB(0, 0, 0)
+EnableResolver2.TextSize = 14.000
+
+ResolverText_2.Name = "ResolverText"
+ResolverText_2.Parent = EnableResolver2
+ResolverText_2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ResolverText_2.BackgroundTransparency = 1.000
+ResolverText_2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+ResolverText_2.BorderSizePixel = 0
+ResolverText_2.Position = UDim2.new(1.60000002, 0, 0, 0)
+ResolverText_2.Size = UDim2.new(0, 40, 0, 10)
+ResolverText_2.Font = Enum.Font.Jura
+ResolverText_2.Text = "MoveDirection"
+ResolverText_2.TextColor3 = Color3.fromRGB(103, 103, 154)
+ResolverText_2.TextSize = 12.000
+ResolverText_2.TextStrokeTransparency = 0.000
+ResolverText_2.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Scripts:
+
+local function WOWNNF_fake_script() -- UsernameText.LocalScript 
+	local script = Instance.new('LocalScript', UsernameText)
+
+	script.Parent.Parent.UsernameText.Text = game.Players.LocalPlayer.Name
+end
+coroutine.wrap(WOWNNF_fake_script)()
+local function HZTWSIW_fake_script() -- AimbotButton.LocalScript 
+	local script = Instance.new('LocalScript', AimbotButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		script.Parent.Parent.AimbotPage.Visible = true
+		script.Parent.Parent.MovementPage.Visible = false
+	end)
+end
+coroutine.wrap(HZTWSIW_fake_script)()
+local function MOGHJ_fake_script() -- MovementButton.LocalScript 
+	local script = Instance.new('LocalScript', MovementButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		script.Parent.Parent.AimbotPage.Visible = false
+		script.Parent.Parent.MovementPage.Visible = true
+	end)
+end
+coroutine.wrap(MOGHJ_fake_script)()
+local function YTQFJU_fake_script() -- EnableUnderground.LocalScript 
+	local script = Instance.new('LocalScript', EnableUnderground)
+
+	local EnableUnderground = false
+	local AntiLock = false
+	
+	game:GetService("RunService").Heartbeat:Connect(function()
+		if AntiLock then
+			local Underground = game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, -500, 0)
+			game:GetService("RunService").RenderStepped:Wait()
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Underground
+		end
+	end)
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableUnderground == false then
+			EnableUnderground = true
+		else
+			EnableUnderground = false
+		end
+	
+		if EnableUnderground == true then
+			AntiLock = true
+			script.Parent.Parent.EnableUnderground.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableUnderground == false then
+			AntiLock = false
+			script.Parent.Parent.EnableUnderground.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(YTQFJU_fake_script)()
+local function MXQLKH_fake_script() -- EnableOverWorld.LocalScript 
+	local script = Instance.new('LocalScript', EnableOverWorld)
+
+	local EnableOverWorld = false
+	local AntiLock = false
+	
+	game:GetService("RunService").Heartbeat:Connect(function()
+		if AntiLock then
+			local Overworld = game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 500, 0)
+			game:GetService("RunService").RenderStepped:Wait()
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Overworld
+		end
+	end)
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableOverWorld == false then
+			EnableOverWorld = true
+		else
+			EnableOverWorld = false
+		end
+	
+		if EnableOverWorld == true then
+			AntiLock = true
+			script.Parent.Parent.EnableOverWorld.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableOverWorld == false then
+			AntiLock = false
+			script.Parent.Parent.EnableOverWorld.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(MXQLKH_fake_script)()
+local function ZQEANT_fake_script() -- EnableLeft.LocalScript 
+	local script = Instance.new('LocalScript', EnableLeft)
+
+	local EnableLeft = false
+	local AntiLock = false
+	
+	game:GetService("RunService").Heartbeat:Connect(function()
+		if AntiLock then
+			local Left = game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(-500, 0, 0)
+			game:GetService("RunService").RenderStepped:Wait()
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Left
+		end
+	end)
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableLeft == false then
+			EnableLeft = true
+		else
+			EnableLeft = false
+		end
+	
+		if EnableLeft == true then
+			AntiLock = true
+			script.Parent.Parent.EnableLeft.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableLeft == false then
+			AntiLock = false
+			script.Parent.Parent.EnableLeft.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(ZQEANT_fake_script)()
+local function TQOFQES_fake_script() -- EnableRight.LocalScript 
+	local script = Instance.new('LocalScript', EnableRight)
+
+	local EnableRight = false
+	local AntiLock = false
+	
+	game:GetService("RunService").Heartbeat:Connect(function()
+		if AntiLock then
+			local Right = game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(500, 0, 0)
+			game:GetService("RunService").RenderStepped:Wait()
+			game.Players.LocalPlayer.Character.HumanoidRootPart.Velocity = Right
+		end
+	end)
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableRight == false then
+			EnableRight = true
+		else
+			EnableRight = false
+		end
+	
+		if EnableRight == true then
+			AntiLock = true
+			script.Parent.Parent.EnableRight.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableRight == false then
+			AntiLock = false
+			script.Parent.Parent.EnableRight.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(TQOFQES_fake_script)()
+local function PELYTGR_fake_script() -- EnableCFrame.LocalScript 
+	local script = Instance.new('LocalScript', EnableCFrame)
+
+	local EnableCFrame = false
+	local CFrameToggle = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableCFrame == false then
+			EnableCFrame = true
+		else
+			EnableCFrame = false
+		end
+	
+		if EnableCFrame == true then
+			
+			game:GetService("Players").LocalPlayer:GetMouse().KeyDown:Connect(function(Key)
+				if Key == script.Parent.Parent.CFrameBox.Text then
+					CFrameToggle = not CFrameToggle
+					if CFrameToggle then
+						game:GetService('RunService'):BindToRenderStep("CFrame", 0 , function()
+							game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame + game.Players.LocalPlayer.Character.Humanoid.MoveDirection * script.Parent.Parent.CFrameAmount.Text
+						end)
+					else
+						EnableCFrame = false
+						game:GetService('RunService'):UnbindFromRenderStep("CFrame")
+					end
+				end
+			end)
+			script.Parent.Parent.EnableCFrame.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableCFrame == false then
+			EnableCFrame = false
+			game:GetService('RunService'):UnbindFromRenderStep("CFrame")
+			script.Parent.Parent.EnableCFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(PELYTGR_fake_script)()
+local function SPPVAR_fake_script() -- CFrameBox.LocalScript 
+	local script = Instance.new('LocalScript', CFrameBox)
+
+	script.Parent.FocusLost:Connect(function(Keybind)
+		if Keybind then
+			script.Parent.Parent.CFrameAmount.Text = script.Parent.Parent.CFrameBox.Text
+		end
+	end)
+end
+coroutine.wrap(SPPVAR_fake_script)()
+local function PVLY_fake_script() -- CFrameAmount.LocalScript 
+	local script = Instance.new('LocalScript', CFrameAmount)
+
+	script.Parent.FocusLost:Connect(function(CFrameAmount)
+		if CFrameAmount then
+			script.Parent.Parent.CFrameAmount.Text = script.Parent.Parent.CFrameAmount.Text
+		end
+	end)
+end
+coroutine.wrap(PVLY_fake_script)()
+local function XNFALJA_fake_script() -- Background.LocalScript 
+	local script = Instance.new('LocalScript', Background)
+
+	local UIS = game:GetService('UserInputService')
+	local frame = script.Parent
+	local dragToggle = nil
+	local dragSpeed = 0.1
+	local dragStart = nil
+	local startPos = nil
+	
+	local function updateInput(input)
+		local delta = input.Position - dragStart
+		local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		game:GetService('TweenService'):Create(frame, TweenInfo.new(dragSpeed), {Position = position}):Play()
+	end
+	
+	frame.InputBegan:Connect(function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then 
+			dragToggle = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragToggle = false
+				end
+			end)
+		end
+	end)
+	
+	UIS.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			if dragToggle then
+				updateInput(input)
+			end
+		end
+	end)
+end
+coroutine.wrap(XNFALJA_fake_script)()
+local function EWAVFB_fake_script() -- Background.LocalScript 
+	local script = Instance.new('LocalScript', Background)
+
+	local Player = game:GetService("Players").LocalPlayer
+	local Mouse = Player:GetMouse()
+	Mouse.KeyDown:Connect(function(Key)
+		if Key == 'v' then
+			if script.Parent.Parent.Background.Visible == true then
+				script.Parent.Parent.Background.Visible = false
+			else
+				script.Parent.Parent.Background.Visible = true
+			end
+		end
+	end)
+end
+coroutine.wrap(EWAVFB_fake_script)()
+local function PGMJLVE_fake_script() -- EnableAimbot.LocalScript 
+	local script = Instance.new('LocalScript', EnableAimbot)
+
+	local EnableAimbot = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableAimbot == false then
+			EnableAimbot = true
+		else
+			EnableAimbot = false
+		end
+	
+		if EnableAimbot == true then
+			Aimlock = true
+			script.Parent.Parent.EnableAimbot.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableAimbot == false then
+			Aimlock = false
+			script.Parent.Parent.EnableAimbot.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(PGMJLVE_fake_script)()
+local function KOZPLXS_fake_script() -- EnablePrediction.LocalScript 
+	local script = Instance.new('LocalScript', EnablePrediction)
+
+	local EnablePrediction = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnablePrediction == false then
+			EnablePrediction = true
+		else
+			EnablePrediction = false
+		end
+	
+		if EnablePrediction == true then
+			PredictMovement = true
+			script.Parent.Parent.EnablePrediction.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnablePrediction == false then
+			PredictMovement = false
+			script.Parent.Parent.EnablePrediction.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(KOZPLXS_fake_script)()
+local function YJVXW_fake_script() -- EnableSmoothness.LocalScript 
+	local script = Instance.new('LocalScript', EnableSmoothness)
+
+	local EnableSmoothness = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableSmoothness == false then
+			EnableSmoothness = true
+		else
+			EnableSmoothness = false
+		end
+	
+		if EnableSmoothness == true then
+			Smoothness = true
+			script.Parent.Parent.EnableSmoothness.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableSmoothness == false then
+			Smoothness = false
+			script.Parent.Parent.EnableSmoothness.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(YJVXW_fake_script)()
+local function PPZCD_fake_script() -- EnableAutoPrediction.LocalScript 
+	local script = Instance.new('LocalScript', EnableAutoPrediction)
+
+	local EnableAutoPrediction = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableAutoPrediction == false then
+			EnableAutoPrediction = true
+		else
+			EnableAutoPrediction = false
+		end
+	
+		if EnableAutoPrediction == true then
+			game:GetService('RunService'):BindToRenderStep('AutoPrediction', 0, function()
+				local pingvalue = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
+				local split = string.split(pingvalue, " ")
+				local ping = split[1]
+				local pingvalue = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
+				local split = string.split(pingvalue, " ")
+				local ping = split[1]
+				if tonumber(ping) <= 10 then
+					PredictionVelocity = 0.1099
+				elseif tonumber(ping) < 35 then
+					PredictionVelocity = 0.2294
+				elseif tonumber(ping) < 40 then
+					PredictionVelocity = 0.1195
+				elseif tonumber(ping) < 45 then
+					PredictionVelocity = 0.1207
+				elseif tonumber(ping) < 50 then
+					PredictionVelocity = 0.1219
+				elseif tonumber(ping) < 55 then
+					PredictionVelocity = 0.1238
+				elseif tonumber(ping) < 60 then
+					PredictionVelocity = 0.1237 
+				elseif tonumber(ping) < 65 then 
+					PredictionVelocity = 0.1264 
+				elseif tonumber(ping) < 70 then
+					PredictionVelocity = 0.1291
+				elseif tonumber(ping) < 75 then
+					PredictionVelocity = 0.1314
+				elseif tonumber(ping) < 80 then 
+					PredictionVelocity = 0.1347 
+				elseif tonumber(ping) < 85 then
+					PredictionVelocity = 0.1343
+				elseif tonumber(ping) < 90 then
+					PredictionVelocity = 0.1359
+				elseif tonumber(ping) < 95 then
+					PredictionVelocity = 0.1363
+				elseif tonumber(ping) < 100 then
+					PredictionVelocity = 0.1388
+				elseif tonumber(ping) < 105 then
+					PredictionVelocity = 0.1428
+				elseif tonumber(ping) < 110 then
+					PredictionVelocity = 0.1469
+				elseif tonumber(ping) < 120 then
+					PredictionVelocity = 0.14783943
+				elseif tonumber(ping) < 130 then
+					PredictionVelocity = 0.15275864
+				elseif tonumber(ping) < 140 then
+					PredictionVelocity = 0.15482643
+				elseif tonumber(ping) < 150 then
+					PredictionVelocity = 0.15973582
+				end
+			end)
+			script.Parent.Parent.EnableAutoPrediction.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableAutoPrediction == false then
+			game:GetService('RunService'):UnbindFromRenderStep('AutoPrediction')
+			script.Parent.Parent.EnableAutoPrediction.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(PPZCD_fake_script)()
+local function MYCCVN_fake_script() -- EnableTeamCheck.LocalScript 
+	local script = Instance.new('LocalScript', EnableTeamCheck)
+
+	local EnableTeamCheck = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableTeamCheck == false then
+			EnableTeamCheck = true
+		else
+			EnableTeamCheck = false
+		end
+	
+		if EnableTeamCheck == true then
+			TeamCheck = true
+			script.Parent.Parent.EnableTeamCheck.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableTeamCheck == false then
+			TeamCheck = false
+			script.Parent.Parent.EnableTeamCheck.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(MYCCVN_fake_script)()
+local function OPPFYUG_fake_script() -- KeybindBox.LocalScript 
+	local script = Instance.new('LocalScript', KeybindBox)
+
+	script.Parent.FocusLost:Connect(function(Keybind)
+		if Keybind then
+			AimlockKey = script.Parent.Parent.KeybindBox.Text
+		end
+	end)
+end
+coroutine.wrap(OPPFYUG_fake_script)()
+local function PRCN_fake_script() -- EnableNotify.LocalScript 
+	local script = Instance.new('LocalScript', EnableNotify)
+
+	local EnableNotify = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableNotify == false then
+			EnableNotify = true
+		else
+			EnableNotify = false
+		end
+	
+		if EnableNotify == true then
+			Notify = true
+			script.Parent.Parent.EnableNotify.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableNotify == false then
+			Notify = false
+			script.Parent.Parent.EnableNotify.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(PRCN_fake_script)()
+local function UNMV_fake_script() -- PredictionBox.LocalScript 
+	local script = Instance.new('LocalScript', PredictionBox)
+
+	script.Parent.FocusLost:Connect(function(PredictionAmount)
+		if PredictionAmount then
+			PredictionVelocity = script.Parent.Parent.PredictionBox.Text
+		end
+	end)
+end
+coroutine.wrap(UNMV_fake_script)()
+local function HVWWBM_fake_script() -- SmoothnessBox.LocalScript 
+	local script = Instance.new('LocalScript', SmoothnessBox)
+
+	script.Parent.FocusLost:Connect(function(SmoothnessAmount)
+		if SmoothnessAmount then
+			SmoothnessAmount = script.Parent.Parent.SmoothnessBox.Text
+		end
+	end)
+end
+coroutine.wrap(HVWWBM_fake_script)()
+local function KLLTLL_fake_script() -- AimpartButton.LocalScript 
+	local script = Instance.new('LocalScript', AimpartButton)
+
+	local OpenAimpart = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if OpenAimpart == false then
+			OpenAimpart = true
+		else
+			OpenAimpart = false
+		end
+	
+		if OpenAimpart == true then
+			script.Parent.Parent.AimpartButton.AimpartSection.Visible = true
+			script.Parent.Parent.AimpartButton.Text = 'Aimpart -'
+		end
+	
+		if OpenAimpart == false then
+			script.Parent.Parent.AimpartButton.AimpartSection.Visible = false
+			script.Parent.Parent.AimpartButton.Text = 'Aimpart +'
+		end
+	end)
+end
+coroutine.wrap(KLLTLL_fake_script)()
+local function AXOUFP_fake_script() -- HeadButton.LocalScript 
+	local script = Instance.new('LocalScript', HeadButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		AimPart = "Head"
+	end)
+end
+coroutine.wrap(AXOUFP_fake_script)()
+local function OUIDT_fake_script() -- UpperTorsoButton.LocalScript 
+	local script = Instance.new('LocalScript', UpperTorsoButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		AimPart = "UpperTorso"
+	end)
+end
+coroutine.wrap(OUIDT_fake_script)()
+local function SCJC_fake_script() -- HumanoidRootPartButton.LocalScript 
+	local script = Instance.new('LocalScript', HumanoidRootPartButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		AimPart = "HumanoidRootPart"
+	end)
+end
+coroutine.wrap(SCJC_fake_script)()
+local function GFALEE_fake_script() -- LowerTorsoButton.LocalScript 
+	local script = Instance.new('LocalScript', LowerTorsoButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		AimPart = "LowerTorso"
+	end)
+end
+coroutine.wrap(GFALEE_fake_script)()
+local function YWZOCI_fake_script() -- GeneralButton_2.LocalScript 
+	local script = Instance.new('LocalScript', GeneralButton_2)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		script.Parent.Parent.AimbotPage2.Visible = true
+		script.Parent.Parent.ResolverPage.Visible = false
+	end)
+end
+coroutine.wrap(YWZOCI_fake_script)()
+local function HQVH_fake_script() -- ResolverButton.LocalScript 
+	local script = Instance.new('LocalScript', ResolverButton)
+
+	script.Parent.MouseButton1Up:Connect(function()
+		script.Parent.Parent.AimbotPage2.Visible = false
+		script.Parent.Parent.ResolverPage.Visible = true
+	end)
+end
+coroutine.wrap(HQVH_fake_script)()
+local function ZSDH_fake_script() -- EnableResolver1.LocalScript 
+	local script = Instance.new('LocalScript', EnableResolver1)
+
+	local EnableResolver1 = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableResolver1 == false then
+			EnableResolver1 = true
+		else
+			EnableResolver1 = false
+		end
+	
+		if EnableResolver1 == true then
+			game:GetService('RunService'):BindToRenderStep('Resolver1', 0, function()
+				for i,v in pairs(game.Players:GetChildren()) do
+					if v.Name ~= game.Players.LocalPlayer.Name then
+						local hrp = v.Character.HumanoidRootPart
+						hrp.Velocity = Vector3.new(0, 0, 0)    
+						hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)   
+					end
+				end
+			end)
+			script.Parent.Parent.EnableResolver1.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableResolver1 == false then
+			game:GetService('RunService'):UnbindFromRenderStep('Resolver1')
+			script.Parent.Parent.EnableResolver1.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(ZSDH_fake_script)()
+local function KQJQ_fake_script() -- EnableResolver2.LocalScript 
+	local script = Instance.new('LocalScript', EnableResolver2)
+
+	local EnableResolver2 = false
+	
+	script.Parent.MouseButton1Down:Connect(function()
+		if EnableResolver2 == false then
+			EnableResolver2 = true
+		else
+			EnableResolver2 = false
+		end
+	
+		if EnableResolver2 == true then
+			game:GetService('RunService'):BindToRenderStep('Resolver2', 0, function()
+				for i,v in pairs(game.Players:GetChildren()) do
+					if v.Name ~= game.Players.LocalPlayer.Name then
+						local hrp = v.Character.HumanoidRootPart
+						hrp.Velocity = v.Character.Humanoid.MoveDirection * 16.15
+						hrp.AssemblyLinearVelocity = v.Character.Humanoid.MoveDirection * 16.15
+					end
+				end
+			end)
+			script.Parent.Parent.EnableResolver2.BackgroundColor3 = Color3.fromRGB(103, 103, 154)
+		end
+	
+		if EnableResolver2 == false then
+			game:GetService('RunService'):UnbindFromRenderStep('Resolver2')
+			script.Parent.Parent.EnableResolver2.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		end
+	end)
+end
+coroutine.wrap(KQJQ_fake_script)()
